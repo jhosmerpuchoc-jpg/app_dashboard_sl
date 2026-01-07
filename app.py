@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 st.title("🚚 Dashboard de Recorridos Completos")
-st.markdown("Datos obtenidos en tiempo real desde el tracker")
+st.markdown("Datos en tiempo real desde el tracker")
 
 # Auto refresh cada 60 segundos
 st_autorefresh(interval=60_000, key="refresh")
@@ -77,7 +77,7 @@ def obtener_datos():
     if not data:
         return pd.DataFrame()
 
-    # NORMALIZAR
+    # NORMALIZAR JSON → TABLA
     dfs = []
     for key, values in data.items():
         if values:
@@ -92,6 +92,7 @@ def obtener_datos():
         .rename(columns={"ts": "evento_ts"})
     )
 
+    # Fecha local Perú
     df_all["evento_fecha"] = (
         pd.to_datetime(df_all["evento_ts"], unit="ms", utc=True)
           .dt.tz_convert("America/Lima")
@@ -109,17 +110,45 @@ if df.empty:
     st.warning("No se encontraron datos")
     st.stop()
 
-# Detectar cierre de recorrido
-df["fin_recorrido"] = (
+# ---------------------------
+# Asegurar columnas dinámicas
+# ---------------------------
+COLUMNAS_ESPERADAS = [
+    "logs_ubicacion",
+    "shared_placaTracto",
+    "shared_placaPlataforma",
+    "shared_conductor",
+    "shared_empresa",
+    "balanzaTime",
+    "desmanteoTime",
+    "calificacionTime",
+    "descargaTime",
+    "imanTime",
+    "barridoTime",
+    "oxicorteTime",
+    "embuticionTime",
+    "consumoTime"
+]
+
+for col in COLUMNAS_ESPERADAS:
+    if col not in df.columns:
+        df[col] = None
+
+# ---------------------------
+# Identificar recorridos
+# ---------------------------
+df["fin_recorrido_flag"] = (
     df["logs_ubicacion"]
     .fillna("")
     .str.lower()
     .eq("desasignación")
 )
 
-df["recorrido_id"] = df["fin_recorrido"].cumsum()
+df["recorrido_id"] = df["fin_recorrido_flag"].cumsum()
 
-# Construir recorridos completos
+# ---------------------------
+# Tabla de recorridos
+# ---------------------------
 recorridos = (
     df.groupby("recorrido_id")
     .agg(
@@ -137,23 +166,23 @@ recorridos = (
         barrido=("barridoTime", "first"),
         oxicorte=("oxicorteTime", "first"),
         embuticion=("embuticionTime", "first"),
-        consumo=("consumoTime", "first"),
+        consumo=("consumoTime", "first")
     )
     .reset_index()
 )
 
-# Duración total
+# Duración total del recorrido
 recorridos["duracion_min"] = (
     (recorridos["fin"] - recorridos["inicio"])
     .dt.total_seconds() / 60
 ).round(1)
 
-# Solo recorridos cerrados
+# Solo recorridos cerrados válidos
 recorridos = recorridos[recorridos["duracion_min"] > 0]
 
-# ======================================================
-# UI
-# ======================================================
+# ===========================
+# INTERFAZ STREAMLIT
+# ===========================
 st.subheader("📋 Recorridos Completos")
 
 st.dataframe(
@@ -161,10 +190,16 @@ st.dataframe(
     use_container_width=True
 )
 
+# KPIs
 st.subheader("📊 KPIs")
+
 col1, col2, col3 = st.columns(3)
-
-col1.metric("Recorridos", len(recorridos))
-col2.metric("Duración Promedio (min)", round(recorridos["duracion_min"].mean(), 1))
-col3.metric("Última actualización", datetime.now().strftime("%H:%M:%S"))
-
+col1.metric("Total recorridos", len(recorridos))
+col2.metric(
+    "Duración promedio (min)",
+    round(recorridos["duracion_min"].mean(), 1)
+)
+col3.metric(
+    "Última actualización",
+    datetime.now().strftime("%H:%M:%S")
+)
