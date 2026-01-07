@@ -1,36 +1,170 @@
-
 import streamlit as st
+import requests
 import pandas as pd
-import plotly.express as px
-from streamlit_autorefresh import st_autorefresh
-import random
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
-# Auto refresco cada 5 segundos
-st_autorefresh(interval=5000, key="datarefresh")
+# ======================================================
+# CONFIG STREAMLIT
+# ======================================================
+st.set_page_config(
+    page_title="Recorridos Completos",
+    layout="wide"
+)
 
-st.set_page_config(page_title="Dashboard en Tiempo Real", layout="wide")
+st.title("🚚 Dashboard de Recorridos Completos")
+st.markdown("Datos obtenidos en tiempo real desde el tracker")
 
-st.title("Dashboard Público en Tiempo Real")
-st.markdown("Actualización automática cada 5 segundos (Streamlit Cloud)")
+# Auto refresh cada 60 segundos
+st_autorefresh(interval=60_000, key="refresh")
 
-# Generar dato en tiempo real
-new_row = pd.DataFrame({
-    "Hora": [datetime.now().strftime("%H:%M:%S")],
-    "Valor": [random.randint(0, 100)]
-})
+# ======================================================
+# CONFIGURACIÓN API
+# ======================================================
+BASE_URL = "https://tracker.acerosarequipa.com"
+USERNAME = "demo.aceria@smelpro.com"
+PASSWORD = "demo2025"
 
-if "hist" not in st.session_state:
-    st.session_state.hist = new_row
-else:
-    st.session_state.hist = pd.concat([st.session_state.hist, new_row]).tail(20)
+ASSET_ID = "00ad3a40-838f-11f0-97ae-99ce2c54259f"
 
-col1, col2 = st.columns([2,1])
+KEYS = [
+    "logs_ubicacion",
+    "fechaAsignacion","fechaDesasignacion",
+    "shared_placaTracto","shared_placaPlataforma",
+    "shared_conductor","shared_empresa",
+    "balanzaTime","desmanteoTime","calificacionTime",
+    "descargaTime","imanTime","barridoTime",
+    "oxicorteTime","embuticionTime","consumoTime"
+]
 
-with col1:
-    fig = px.line(st.session_state.hist, x="Hora", y="Valor", markers=True)
-    st.plotly_chart(fig, use_container_width=True)
+# Últimas 3 horas
+end_ts = int(datetime.now().timestamp() * 1000)
+start_ts = end_ts - (3 * 60 * 60 * 1000)
 
-with col2:
-    st.subheader("Últimos valores")
-    st.dataframe(st.session_state.hist, use_container_width=True)
+# ======================================================
+# FUNCIONES
+# ======================================================
+@st.cache_data(ttl=60)
+def obtener_datos():
+    session = requests.Session()
+
+    # LOGIN
+    login = session.post(
+        f"{BASE_URL}/api/auth/login",
+        json={"username": USERNAME, "password": PASSWORD},
+        timeout=15
+    )
+    login.raise_for_status()
+
+    token = login.json()["token"]
+    session.headers.update({
+        "X-Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    })
+
+    # TELEMETRÍA
+    url = (
+        f"{BASE_URL}/api/plugins/telemetry/ASSET/{ASSET_ID}/values/timeseries"
+        f"?keys={','.join(KEYS)}"
+        f"&startTs={start_ts}&endTs={end_ts}"
+        f"&agg=NONE&order=ASC&limit=100000"
+    )
+
+    resp = session.get(url, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if not data:
+        return pd.DataFrame()
+
+    # NORMALIZAR
+    dfs = []
+    for key, values in data.items():
+        if values:
+            df = pd.DataFrame(values)
+            df.rename(columns={"value": key}, inplace=True)
+            dfs.append(df[["ts", key]])
+
+    df_all = (
+        pd.concat(dfs)
+        .groupby("ts", as_index=False)
+        .first()
+        .rename(columns={"ts": "evento_ts"})
+    )
+
+    df_all["evento_fecha"] = (
+        pd.to_datetime(df_all["evento_ts"], unit="ms", utc=True)
+          .dt.tz_convert("America/Lima")
+          .dt.tz_localize(None)
+    )
+
+    return df_all.sort_values("evento_fecha").reset_index(drop=True)
+
+# ======================================================
+# PROCESAMIENTO
+# ======================================================
+df = obtener_datos()
+
+if df.empty:
+    st.warning("No se encontraron datos")
+    st.stop()
+
+# Detectar cierre de recorrido
+df["fin_recorrido"] = (
+    df["logs_ubicacion"]
+    .fillna("")
+    .str.lower()
+    .eq("desasignación")
+)
+
+df["recorrido_id"] = df["fin_recorrido"].cumsum()
+
+# Construir recorridos completos
+recorridos = (
+    df.groupby("recorrido_id")
+    .agg(
+        inicio=("evento_fecha", "min"),
+        fin=("evento_fecha", "max"),
+        placa_tracto=("shared_placaTracto", "first"),
+        placa_plataforma=("shared_placaPlataforma", "first"),
+        conductor=("shared_conductor", "first"),
+        empresa=("shared_empresa", "first"),
+        balanza=("balanzaTime", "first"),
+        desmanteo=("desmanteoTime", "first"),
+        calificacion=("calificacionTime", "first"),
+        descarga=("descargaTime", "first"),
+        iman=("imanTime", "first"),
+        barrido=("barridoTime", "first"),
+        oxicorte=("oxicorteTime", "first"),
+        embuticion=("embuticionTime", "first"),
+        consumo=("consumoTime", "first"),
+    )
+    .reset_index()
+)
+
+# Duración total
+recorridos["duracion_min"] = (
+    (recorridos["fin"] - recorridos["inicio"])
+    .dt.total_seconds() / 60
+).round(1)
+
+# Solo recorridos cerrados
+recorridos = recorridos[recorridos["duracion_min"] > 0]
+
+# ======================================================
+# UI
+# ======================================================
+st.subheader("📋 Recorridos Completos")
+
+st.dataframe(
+    recorridos.sort_values("fin", ascending=False),
+    use_container_width=True
+)
+
+st.subheader("📊 KPIs")
+col1, col2, col3 = st.columns(3)
+
+col1.metric("Recorridos", len(recorridos))
+col2.metric("Duración Promedio (min)", round(recorridos["duracion_min"].mean(), 1))
+col3.metric("Última actualización", datetime.now().strftime("%H:%M:%S"))
+
