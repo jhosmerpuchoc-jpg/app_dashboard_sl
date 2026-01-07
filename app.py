@@ -39,7 +39,7 @@ KEYS = [
 
 # Últimas 3 horas
 end_ts = int(datetime.now().timestamp() * 1000)
-start_ts = end_ts - (3 * 60 * 60 * 1000)
+start_ts = end_ts - 365*(24 * 60 * 60 * 1000)
 
 # ======================================================
 # FUNCIONES
