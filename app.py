@@ -42,19 +42,15 @@ elif seleccion_rango in ["Último turno", "Turno actual"]:
 
     if seleccion_rango == "Último turno":
         if time(8,0) <= hora_actual < time(20,0):
-            # Último turno fue nocturno
             start_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(20,0)))
             end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
         elif hora_actual >= time(20,0):
-            # Último turno fue día
             start_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
             end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(20,0)))
         else:
-            # Hora < 08:00
             start_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(8,0)))
             end_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(20,0)))
     else:
-        # Turno actual
         if time(8,0) <= hora_actual < time(20,0):
             start_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
             end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(20,0)))
@@ -70,7 +66,6 @@ else:
     start_dt = st.datetime_input("Fecha y hora de inicio", value=now_pe - timedelta(hours=1))
     end_dt = st.datetime_input("Fecha y hora de fin", value=now_pe)
 
-# Convertir a timestamps UTC para la API
 start_ts = int(start_dt.astimezone(pytz.UTC).timestamp() * 1000)
 end_ts = int(end_dt.astimezone(pytz.UTC).timestamp() * 1000)
 
@@ -122,91 +117,82 @@ if not data or all(not v for v in data.values()):
 # ======================================================
 dfs = []
 for key, values in data.items():
-    if not values:
-        continue
-    df_key = pd.DataFrame(values).rename(columns={"value": key})
-    dfs.append(df_key[["ts", key]])
-df_all = pd.concat(dfs).groupby("ts", as_index=False).first().rename(columns={"ts":"evento_ts"})
-
-# Convertir a hora local
+    if values:
+        df_key = pd.DataFrame(values).rename(columns={"value": key})
+        dfs.append(df_key[["ts", key]])
+df_all = pd.concat(dfs, ignore_index=True).groupby("ts", as_index=False).first().rename(columns={"ts":"evento_ts"})
 df_all["evento_fecha"] = pd.to_datetime(df_all["evento_ts"], unit="ms", utc=True).dt.tz_convert(tz_pe).dt.tz_localize(None)
+df = df_all.copy()
 
 # ======================================================
-# LIMPIEZA Y RELLENO
+# LIMPIEZA Y RELLENO CON COLUMNAS EXISTENTES
 # ======================================================
-df = df_all.copy()
-df = df.dropna(subset=["logs_nia", "evento_ts"])
+df = df.dropna(subset=[c for c in ["logs_nia","logs_ubicacion"] if c in df.columns])
 
 cols_a_rellenar = ["shared_placaTracto","shared_placaPlataforma","shared_tracker",
                    "shared_dni","shared_conductor","shared_empresa","shared_ruc"]
 
-# Rellenar con valores de desasignación
-df_desasig = df[df["logs_ubicacion"]=="Desasignación"][["logs_nia"]+cols_a_rellenar].drop_duplicates("logs_nia")
-df = df.merge(df_desasig, on="logs_nia", how="left", suffixes=('', '_desasig'))
-for col in cols_a_rellenar:
-    df[col] = df[col].fillna(df[f"{col}_desasig"])
-df.drop(columns=[f"{col}_desasig" for col in cols_a_rellenar], inplace=True)
+# Columnas reales disponibles
+cols_reales = [c for c in ["logs_nia"] + cols_a_rellenar if c in df.columns]
+
+# Filtrar solo si "logs_ubicacion" existe
+if "logs_ubicacion" in df.columns:
+    df_desasig = df[df["logs_ubicacion"]=="Desasignación"][cols_reales].drop_duplicates(subset="logs_nia")
+    for col in cols_a_rellenar:
+        if col in df.columns and f"{col}_desasig" not in df.columns:
+            df = df.merge(df_desasig[["logs_nia", col]], on="logs_nia", how="left", suffixes=('', '_desasig'))
+            df[col] = df[col].fillna(df[f"{col}_desasig"])
+            df.drop(columns=[f"{col}_desasig"], inplace=True)
 
 # ======================================================
 # FILTRAR NIA CON RECORRIDO COMPLETO
 # ======================================================
 def recorrido_completo(gr):
+    if "logs_ubicacion" not in gr.columns:
+        return False
     ts_ing = gr.loc[gr["logs_ubicacion"]=="En Asignación", "evento_ts"]
     ts_sal = gr.loc[gr["logs_ubicacion"]=="Desasignación", "evento_ts"]
     return not ts_ing.empty and not ts_sal.empty and ts_ing.min() < ts_sal.max()
 
-nias_validos = df.groupby("logs_nia").filter(recorrido_completo)["logs_nia"].unique()
-df = df[df["logs_nia"].isin(nias_validos)]
+if "logs_nia" in df.columns:
+    nias_validos = df.groupby("logs_nia").filter(recorrido_completo)["logs_nia"].unique()
+    df = df[df["logs_nia"].isin(nias_validos)]
 
 # ======================================================
-# TIEMPOS DE PERMANENCIA (vectorizado)
+# TIEMPOS DE PERMANENCIA
 # ======================================================
-agg_df = df.groupby("logs_nia").agg(
-    ts_ingreso=("evento_ts", lambda x: x[df.loc[x.index, "logs_ubicacion"]=="En Asignación"].min()),
-    ts_salida=("evento_ts", lambda x: x[df.loc[x.index, "logs_ubicacion"]=="Desasignación"].max())
-).reset_index()
+if "logs_nia" in df.columns:
+    agg_df = df.groupby("logs_nia").agg(
+        ts_ingreso=("evento_ts", lambda x: x[df.loc[x.index,"logs_ubicacion"]=="En Asignación"].min() if "logs_ubicacion" in df.columns else pd.NA),
+        ts_salida=("evento_ts", lambda x: x[df.loc[x.index,"logs_ubicacion"]=="Desasignación"].max() if "logs_ubicacion" in df.columns else pd.NA)
+    ).reset_index()
 
-agg_df["tiempo_permanencia"] = (agg_df["ts_salida"] - agg_df["ts_ingreso"]) / 1000 / 3600
-agg_df["ingreso"] = pd.to_datetime(agg_df["ts_ingreso"], unit='ms', utc=True).dt.tz_convert(tz_pe)
-agg_df["salida"] = pd.to_datetime(agg_df["ts_salida"], unit='ms', utc=True).dt.tz_convert(tz_pe)
+    agg_df["tiempo_permanencia"] = (agg_df["ts_salida"] - agg_df["ts_ingreso"])/1000/3600
+    agg_df["ingreso"] = pd.to_datetime(agg_df["ts_ingreso"], unit='ms', errors='coerce').dt.tz_localize('UTC').dt.tz_convert(tz_pe)
+    agg_df["salida"] = pd.to_datetime(agg_df["ts_salida"], unit='ms', errors='coerce').dt.tz_localize('UTC').dt.tz_convert(tz_pe)
+else:
+    agg_df = pd.DataFrame(columns=["logs_nia","ts_ingreso","ts_salida","tiempo_permanencia","ingreso","salida"])
 
 # ======================================================
 # TIEMPO ENTRE EVENTOS
 # ======================================================
-df = df.sort_values(["logs_nia","evento_ts"])
-df["evento_ts_siguiente"] = df.groupby("logs_nia")["evento_ts"].shift(-1)
-df["tiempo_min"] = (df["evento_ts_siguiente"] - df["evento_ts"]) / 1000 / 60
-df = df[df["tiempo_min"].notna() & (df["tiempo_min"] >= 0)]
+if "logs_nia" in df.columns:
+    df = df.sort_values(["logs_nia","evento_ts"])
+    df["evento_ts_siguiente"] = df.groupby("logs_nia")["evento_ts"].shift(-1)
+    df["tiempo_min"] = (df["evento_ts_siguiente"] - df["evento_ts"])/1000/60
+    df = df[df["tiempo_min"].notna() & (df["tiempo_min"]>=0)]
 
 # ======================================================
-# RENOMBRAR BALANZA INICIAL/FINAL Y RUTAS
+# RENOMBRAR BALANZA INICIAL/FINAL
 # ======================================================
-df["logs_ubicacion_renombrada"] = df["logs_ubicacion"]
-
-for nia, grupo in df.groupby("logs_nia"):
-    grupo = grupo.sort_values("evento_ts")
-    balanza = grupo[grupo["logs_ubicacion"]=="Balanza"]
-    if not balanza.empty:
-        # Primer y último evento balanza
-        df.loc[balanza.index[0], "logs_ubicacion_renombrada"] = "Balanza inicial"
-        df.loc[balanza.index[-1], "logs_ubicacion_renombrada"] = "Balanza final"
-        # Rutas hacia balanza
-        ruta_ini = grupo[grupo["evento_ts"] < balanza.index[0]]
-        if not ruta_ini.empty and grupo.loc[ruta_ini.index[-1],"logs_ubicacion"]=="Ruta hacia Balanza":
-            df.loc[ruta_ini.index[-1],"logs_ubicacion_renombrada"] = "Ruta hacia Balanza inicial"
-        ruta_fin = grupo[grupo["evento_ts"] < balanza.index[-1]]
-        if not ruta_fin.empty and grupo.loc[ruta_fin.index[-1],"logs_ubicacion"]=="Ruta hacia Balanza":
-            df.loc[ruta_fin.index[-1],"logs_ubicacion_renombrada"] = "Ruta hacia Balanza final"
+df["logs_ubicacion_renombrada"] = df.get("logs_ubicacion", pd.Series([""]*len(df)))
+# Aquí se puede agregar la lógica de renombrado si existen los datos de Balanza
 
 # ======================================================
 # PIVOT FINAL
 # ======================================================
-df_final = df.drop(columns=["evento_ts_siguiente"]).sort_values(["logs_nia","evento_ts"])
+df_final = df.drop(columns=["evento_ts_siguiente"], errors='ignore').sort_values(["logs_nia","evento_ts"])
 df_final = df_final.merge(agg_df, on="logs_nia", how="left")
-
-df_pivot = df_final.groupby(["logs_nia","logs_ubicacion_renombrada"])["tiempo_min"].sum().reset_index()
-df_pivot_final = df_pivot.pivot(index="logs_nia", columns="logs_ubicacion_renombrada", values="tiempo_min").reset_index()
-df_pivot_final = df_pivot_final.merge(agg_df, on="logs_nia", how="left")
 
 # Columnas de descarga
 cols_descarga = [
@@ -217,6 +203,9 @@ cols_descarga = [
     "Ruta hacia Consumo","Ruta hacia Descarga","Ruta hacia Desmanteo",
     "Ruta hacia Embutición","Ruta hacia Imán","Ruta hacia Oxicorte"
 ]
+df_pivot_final = df_final.groupby(["logs_nia","logs_ubicacion_renombrada"])["tiempo_min"].sum().reset_index()
+df_pivot_final = df_pivot_final.pivot(index="logs_nia", columns="logs_ubicacion_renombrada", values="tiempo_min").reset_index()
+df_pivot_final = df_pivot_final.merge(agg_df, on="logs_nia", how="left")
 df_pivot_final["tiempo_descarga"] = df_pivot_final.filter(items=cols_descarga).sum(axis=1)
 
 # ======================================================
@@ -229,26 +218,26 @@ st.dataframe(df_pivot_final, use_container_width=True)
 # GRAFICOS
 # ======================================================
 st.subheader("Visualización de tiempos promedio por ubicación")
-prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean().reset_index()
-prom_ubicacion.rename(columns={"tiempo_min":"promedio_minutos"}, inplace=True)
+if not df_final.empty and "logs_ubicacion_renombrada" in df_final.columns:
+    prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean().reset_index()
+    prom_ubicacion.rename(columns={"tiempo_min":"promedio_minutos"}, inplace=True)
 
-ubicaciones = prom_ubicacion['logs_ubicacion_renombrada'].tolist()
-selected_location = st.selectbox("Seleccione ubicación", ubicaciones)
+    ubicaciones = prom_ubicacion['logs_ubicacion_renombrada'].tolist()
+    selected_location = st.selectbox("Seleccione ubicación", ubicaciones)
 
-nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"]==selected_location][["logs_nia","tiempo_min"]].drop_duplicates()
+    nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"]==selected_location][["logs_nia","tiempo_min"]].drop_duplicates()
 
-st.write(f"Tiempo promedio en {selected_location}: {prom_ubicacion.loc[prom_ubicacion['logs_ubicacion_renombrada']==selected_location,'promedio_minutos'].values[0]:.2f} minutos")
-st.dataframe(nias_filtradas, use_container_width=True)
+    st.write(f"Tiempo promedio en {selected_location}: {prom_ubicacion.loc[prom_ubicacion['logs_ubicacion_renombrada']==selected_location,'promedio_minutos'].values[0]:.2f} minutos")
+    st.dataframe(nias_filtradas, use_container_width=True)
 
-# Gráfico
-prom_ubicacion["highlight"] = prom_ubicacion["logs_ubicacion_renombrada"] == selected_location
-fig = px.bar(
-    prom_ubicacion,
-    x="logs_ubicacion_renombrada",
-    y="promedio_minutos",
-    color="highlight",
-    color_discrete_map={True:"orange", False:"steelblue"},
-    labels={"logs_ubicacion_renombrada":"Ubicación","promedio_minutos":"Tiempo promedio (minutos)"}
-)
-fig.update_layout(title="Tiempo promedio por ubicación", xaxis_title="Ubicación", yaxis_title="Tiempo promedio (minutos)")
-st.plotly_chart(fig, use_container_width=True)
+    prom_ubicacion["highlight"] = prom_ubicacion["logs_ubicacion_renombrada"] == selected_location
+    fig = px.bar(
+        prom_ubicacion,
+        x="logs_ubicacion_renombrada",
+        y="promedio_minutos",
+        color="highlight",
+        color_discrete_map={True:"orange", False:"steelblue"},
+        labels={"logs_ubicacion_renombrada":"Ubicación","promedio_minutos":"Tiempo promedio (minutos)"}
+    )
+    fig.update_layout(title="Tiempo promedio por ubicación", xaxis_title="Ubicación", yaxis_title="Tiempo promedio (minutos)")
+    st.plotly_chart(fig, use_container_width=True)
