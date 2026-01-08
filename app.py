@@ -20,7 +20,16 @@ hide_header_style = """
     </style>
 """
 st.markdown(hide_header_style, unsafe_allow_html=True)
-
+# Ocultar botones de la UI de hosting (como "Manage app")
+hide_ui_buttons = """
+    <style>
+    button._terminalButton_rix23_138,
+    button[data-testid="manage-app-button"] {
+        display: none !important;
+    }
+    </style>
+"""
+st.markdown(hide_ui_buttons, unsafe_allow_html=True)
 # ======================================================
 # CAMBIAR COLOR DE FONDO
 # ======================================================
