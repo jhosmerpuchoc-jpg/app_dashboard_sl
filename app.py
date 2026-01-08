@@ -34,7 +34,6 @@ end_ts = int(end_dt.timestamp() * 1000)
 
 st.write(f"Mostrando datos desde: {start_dt} hasta {end_dt}")
 st.write(f"Timestamps: start_ts = {start_ts}, end_ts = {end_ts}")
-}")
 
 
 # ======================================================
