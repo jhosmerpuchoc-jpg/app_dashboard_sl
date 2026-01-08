@@ -10,37 +10,13 @@ import plotly.express as px
 hide_header_style = """
     <style>
     /* Oculta todo el header de Streamlit */
-    header.stAppHeader {display: none;}
-    
-    /* Opcional: oculta el footer de Streamlit */
-    footer {visibility: hidden;}
-    
+    header.stAppHeader {display: none;}   
     /* Opcional: elimina margen superior para que la app suba completamente */
     .stApp {padding-top: 0rem;}
     </style>
 """
 st.markdown(hide_header_style, unsafe_allow_html=True)
 
-# CSS más robusto para ocultar toda la UI extra de Streamlit Cloud
-hide_streamlit_ui = """
-<style>
-/* Oculta header completo */
-header.stAppHeader {display: none !important;}
-
-/* Oculta footer */
-footer {display: none !important;}
-
-/* Oculta toolbar flotante */
-div[data-testid="stToolbar"] {display: none !important;}
-
-/* Oculta badges de Streamlit Cloud (logo y perfil) */
-a[href*="streamlit.io"], div[data-testid="appCreatorAvatar"] {display: none !important;}
-
-/* Elimina padding superior */
-.stApp {padding-top: 0rem !important;}
-</style>
-"""
-st.markdown(hide_streamlit_ui, unsafe_allow_html=True)
 # ======================================================
 # CAMBIAR COLOR DE FONDO
 # ======================================================
