@@ -9,31 +9,34 @@ import streamlit as st
 # ======================================================
 import streamlit as st
 from datetime import datetime, timedelta
+import pytz
 
 st.title("Filtro de tiempo para Telemetría")
+
+# Zona horaria Perú
+tz_pe = pytz.timezone("America/Lima")
+now_pe = datetime.now(tz_pe)
 
 # --- Desplegable de últimas horas ---
 ultimas_horas_opciones = ["Custom", "1 hora", "3 horas", "6 horas", "12 horas", "24 horas", "48 horas"]
 seleccion = st.selectbox("Seleccione rango rápido de últimas horas", ultimas_horas_opciones)
 
 # --- Variables de inicio y fin ---
-now = datetime.now()
-
 if seleccion != "Custom":
     horas = int(seleccion.split()[0])
-    start_dt = now - timedelta(hours=horas)
-    end_dt = now
+    start_dt = now_pe - timedelta(hours=horas)
+    end_dt = now_pe
 else:
     # --- Selector manual de fecha y hora ---
-    start_dt = st.datetime_input("Fecha y hora de inicio", value=now - timedelta(hours=1))
-    end_dt = st.datetime_input("Fecha y hora de fin", value=now)
+    start_dt = st.datetime_input("Fecha y hora de inicio", value=now_pe - timedelta(hours=1))
+    end_dt = st.datetime_input("Fecha y hora de fin", value=now_pe)
 
-# Convertir a timestamps en milisegundos
-start_ts = int(start_dt.timestamp() * 1000)
-end_ts = int(end_dt.timestamp() * 1000)
+# Convertir a timestamps en milisegundos UTC (para la API)
+start_ts = int(start_dt.astimezone(pytz.UTC).timestamp() * 1000)
+end_ts = int(end_dt.astimezone(pytz.UTC).timestamp() * 1000)
 
-st.write(f"Mostrando datos desde: {start_dt} hasta {end_dt}")
-st.write(f"Timestamps: start_ts = {start_ts}, end_ts = {end_ts}")
+st.write(f"Mostrando datos desde: {start_dt.strftime('%Y-%m-%d %H:%M:%S')} hasta {end_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+st.write(f"Timestamps UTC (para API): start_ts = {start_ts}, end_ts = {end_ts}")
 
 
 # ======================================================
