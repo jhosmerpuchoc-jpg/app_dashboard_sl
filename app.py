@@ -5,6 +5,22 @@ import pytz
 import streamlit as st
 
 # ======================================================
+# FILTRO DE FECHAS
+# ======================================================
+st.title("Telemetría de Recorridos por NIA")
+
+# Selector de rango de fechas
+fecha_inicio = st.date_input("Fecha de inicio", value=datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+fecha_fin = st.date_input("Fecha de fin", value=datetime.now())
+
+# Convertir a timestamps en milisegundos
+start_ts = int(datetime(fecha_inicio.year, fecha_inicio.month, fecha_inicio.day, 0, 0, 0).timestamp() * 1000)
+end_ts = int(datetime(fecha_fin.year, fecha_fin.month, fecha_fin.day, 23, 59, 59).timestamp() * 1000)
+
+st.write(f"Mostrando datos desde {fecha_inicio} hasta {fecha_fin}")
+
+
+# ======================================================
 # CONFIGURACIÓN
 # ======================================================
 BASE_URL = "https://tracker.acerosarequipa.com"
@@ -20,8 +36,8 @@ KEYS = [
 ]
 
 # Últimos 10 días
-end_ts = int(datetime.now().timestamp() * 1000)
-start_ts = end_ts - 10*(24*60*60*1000)
+#end_ts = int(datetime.now().timestamp() * 1000)
+#start_ts = end_ts - 10*(24*60*60*1000)
 
 # ======================================================
 # LOGIN Y SESIÓN
