@@ -8,7 +8,7 @@ import streamlit as st
 # FILTRO DE FECHAS
 # ======================================================
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pytz
 
 st.title("Filtro de tiempo para Telemetría")
@@ -17,25 +17,48 @@ st.title("Filtro de tiempo para Telemetría")
 tz_pe = pytz.timezone("America/Lima")
 now_pe = datetime.now(tz_pe)
 
-# --- Desplegable de últimas horas ---
-ultimas_horas_opciones = ["Custom", "1 hora", "3 horas", "6 horas", "12 horas", "24 horas", "48 horas"]
-seleccion = st.selectbox("Seleccione rango rápido de últimas horas", ultimas_horas_opciones)
+# --- Desplegable de rango rápido ---
+opciones_rango = ["Custom", "Últimas horas", "Último turno"]
+seleccion_rango = st.selectbox("Seleccione tipo de filtrado", opciones_rango)
 
-# --- Variables de inicio y fin ---
-if seleccion != "Custom":
-    horas = int(seleccion.split()[0])
+# Inicializamos start_dt y end_dt
+start_dt = end_dt = None
+
+if seleccion_rango == "Últimas horas":
+    ultimas_horas_opciones = ["1 hora", "3 horas", "6 horas", "12 horas", "24 horas", "48 horas"]
+    seleccion_horas = st.selectbox("Seleccione últimas horas", ultimas_horas_opciones)
+    horas = int(seleccion_horas.split()[0])
     start_dt = now_pe - timedelta(hours=horas)
     end_dt = now_pe
+
+elif seleccion_rango == "Último turno":
+    # Turnos: día 08:00-20:00, noche 20:00-08:00
+    hora_actual = now_pe.time()
+    fecha_actual = now_pe.date()
+    
+    if time(8,0) <= hora_actual < time(20,0):
+        # Último turno fue nocturno 20:00 del día anterior a 08:00 hoy
+        start_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(20,0)))
+        end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
+    elif hora_actual >= time(20,0):
+        # Último turno fue día 08:00 a 20:00 hoy
+        start_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
+        end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(20,0)))
+    else: # hora_actual < 08:00
+        # Último turno fue día 08:00 a 20:00 día anterior
+        start_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(8,0)))
+        end_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(20,0)))
+
 else:
-    # --- Selector manual de fecha y hora ---
+    # Custom: selector manual de fecha y hora
     start_dt = st.datetime_input("Fecha y hora de inicio", value=now_pe - timedelta(hours=1))
     end_dt = st.datetime_input("Fecha y hora de fin", value=now_pe)
 
-# Convertir a timestamps en milisegundos UTC (para la API)
+# Convertir a timestamps UTC para la API
 start_ts = int(start_dt.astimezone(pytz.UTC).timestamp() * 1000)
 end_ts = int(end_dt.astimezone(pytz.UTC).timestamp() * 1000)
 
-st.write(f"Mostrando datos desde: {start_dt.strftime('%Y-%m-%d %H:%M:%S')} hasta {end_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+st.write(f"Mostrando datos desde: {start_dt.strftime('%Y-%m-%d %H:%M:%S')} hasta {end_dt.strftime('%Y-%m-%d %H:%M:%S')} (Hora Perú)")
 st.write(f"Timestamps UTC (para API): start_ts = {start_ts}, end_ts = {end_ts}")
 
 
