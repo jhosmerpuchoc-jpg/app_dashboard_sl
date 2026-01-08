@@ -20,16 +20,24 @@ hide_header_style = """
     </style>
 """
 st.markdown(hide_header_style, unsafe_allow_html=True)
-# Ocultar botones de la UI de hosting (como "Manage app")
-hide_ui_buttons = """
-    <style>
-    button._terminalButton_rix23_138,
-    button[data-testid="manage-app-button"] {
-        display: none !important;
-    }
-    </style>
+
+# CSS para ocultar header, footer y badges de Streamlit Cloud
+hide_streamlit_ui = """
+<style>
+/* Oculta header completo */
+header.stAppHeader {display: none;}
+
+/* Oculta footer */
+footer {visibility: hidden;}
+
+/* Oculta badges de Streamlit Cloud (logo y perfil) */
+a._container_gzau3_1, div._profileContainer_gzau3_53 {display: none !important;}
+
+/* Elimina padding superior para que la app suba hasta arriba */
+.stApp {padding-top: 0rem;}
+</style>
 """
-st.markdown(hide_ui_buttons, unsafe_allow_html=True)
+st.markdown(hide_streamlit_ui, unsafe_allow_html=True)
 # ======================================================
 # CAMBIAR COLOR DE FONDO
 # ======================================================
