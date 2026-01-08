@@ -6,6 +6,21 @@ import streamlit as st
 import plotly.express as px
 
 # ======================================================
+# CAMBIAR COLOR DE FONDO
+# ======================================================
+page_bg_color = "#b8c3d9"  # Cambia este color a tu gusto
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-color: {page_bg_color};
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ======================================================
 # CONFIGURACIÓN STREAMLIT
 # ======================================================
 st.set_page_config(
