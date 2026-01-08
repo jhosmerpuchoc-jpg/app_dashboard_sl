@@ -2,3 +2,7 @@ streamlit
 requests
 pandas
 streamlit-autorefresh
+plotly
+streamlit-plotly-events
+pytz
+
