@@ -21,20 +21,23 @@ hide_header_style = """
 """
 st.markdown(hide_header_style, unsafe_allow_html=True)
 
-# CSS para ocultar header, footer y badges de Streamlit Cloud
+# CSS más robusto para ocultar toda la UI extra de Streamlit Cloud
 hide_streamlit_ui = """
 <style>
 /* Oculta header completo */
-header.stAppHeader {display: none;}
+header.stAppHeader {display: none !important;}
 
 /* Oculta footer */
-footer {visibility: hidden;}
+footer {display: none !important;}
+
+/* Oculta toolbar flotante */
+div[data-testid="stToolbar"] {display: none !important;}
 
 /* Oculta badges de Streamlit Cloud (logo y perfil) */
-a._container_gzau3_1, div._profileContainer_gzau3_53 {display: none !important;}
+a[href*="streamlit.io"], div[data-testid="appCreatorAvatar"] {display: none !important;}
 
-/* Elimina padding superior para que la app suba hasta arriba */
-.stApp {padding-top: 0rem;}
+/* Elimina padding superior */
+.stApp {padding-top: 0rem !important;}
 </style>
 """
 st.markdown(hide_streamlit_ui, unsafe_allow_html=True)
