@@ -7,17 +7,34 @@ import streamlit as st
 # ======================================================
 # FILTRO DE FECHAS
 # ======================================================
-st.title("Telemetría de Recorridos por NIA")
+import streamlit as st
+from datetime import datetime, timedelta
 
-# Selector de rango de fechas
-fecha_inicio = st.date_input("Fecha de inicio", value=datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
-fecha_fin = st.date_input("Fecha de fin", value=datetime.now())
+st.title("Filtro de tiempo para Telemetría")
+
+# --- Desplegable de últimas horas ---
+ultimas_horas_opciones = ["Custom", "1 hora", "3 horas", "6 horas", "12 horas", "24 horas", "48 horas"]
+seleccion = st.selectbox("Seleccione rango rápido de últimas horas", ultimas_horas_opciones)
+
+# --- Variables de inicio y fin ---
+now = datetime.now()
+
+if seleccion != "Custom":
+    horas = int(seleccion.split()[0])
+    start_dt = now - timedelta(hours=horas)
+    end_dt = now
+else:
+    # --- Selector manual de fecha y hora ---
+    start_dt = st.datetime_input("Fecha y hora de inicio", value=now - timedelta(hours=1))
+    end_dt = st.datetime_input("Fecha y hora de fin", value=now)
 
 # Convertir a timestamps en milisegundos
-start_ts = int(datetime(fecha_inicio.year, fecha_inicio.month, fecha_inicio.day, 0, 0, 0).timestamp() * 1000)
-end_ts = int(datetime(fecha_fin.year, fecha_fin.month, fecha_fin.day, 23, 59, 59).timestamp() * 1000)
+start_ts = int(start_dt.timestamp() * 1000)
+end_ts = int(end_dt.timestamp() * 1000)
 
-st.write(f"Mostrando datos desde {fecha_inicio} hasta {fecha_fin}")
+st.write(f"Mostrando datos desde: {start_dt} hasta {end_dt}")
+st.write(f"Timestamps: start_ts = {start_ts}, end_ts = {end_ts}")
+}")
 
 
 # ======================================================
