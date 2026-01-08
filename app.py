@@ -289,21 +289,49 @@ st.dataframe(df_pivot_final, use_container_width=True)
 # MOSTRAR EN STREAMLIT graficas
 # ======================================================
 import altair as alt
+import streamlit as st
+import pandas as pd
 
-st.subheader("Tiempo promedio por ubicación")
+st.subheader("Tiempo promedio por ubicación con detalle de NIA")
 
-# Calcular promedio de tiempo por ubicación
+# Ejemplo de df_final
+# df_final debe tener: logs_nia, logs_ubicacion_renombrada, tiempo_min
+
+# 1️⃣ Calcular promedio por ubicación
 prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean().reset_index()
 prom_ubicacion.rename(columns={"tiempo_min": "promedio_minutos"}, inplace=True)
 
-# Gráfico de barras
+# 2️⃣ Crear selección por clic
+selection = alt.selection_single(fields=['logs_ubicacion_renombrada'], empty="none", on="click")
+
+# 3️⃣ Gráfico de barras interactivo
 chart_ubicacion = alt.Chart(prom_ubicacion).mark_bar().encode(
     x=alt.X("logs_ubicacion_renombrada:N", title="Ubicación"),
     y=alt.Y("promedio_minutos:Q", title="Tiempo promedio (minutos)"),
+    color=alt.condition(selection, alt.value("orange"), alt.value("steelblue")),
     tooltip=["logs_ubicacion_renombrada", "promedio_minutos"]
+).add_selection(
+    selection
 ).properties(
     width=800,
     height=400
 ).interactive()
 
 st.altair_chart(chart_ubicacion)
+
+# 4️⃣ Mostrar los NIA correspondientes a la barra seleccionada
+if selection:  # Streamlit necesita filtrar manualmente
+    # Obtener la ubicación seleccionada
+    loc_sel = st.altair_chart(chart_ubicacion)._chart_dict['selection'] if chart_ubicacion else None
+
+# Más fácil con Streamlit: usar altair `transform_filter` para mostrar tabla
+# Creamos tabla filtrada con streamlit usando `selection` de Altair
+# Para Streamlit se puede hacer así:
+st.subheader("NIA utilizados para el promedio")
+
+# Crear selección como string en Streamlit
+selected_location = st.selectbox("Selecciona la ubicación para ver los NIA", prom_ubicacion['logs_ubicacion_renombrada'])
+
+nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"] == selected_location][["logs_nia", "tiempo_min"]].drop_duplicates()
+st.dataframe(nias_filtradas, use_container_width=True)
+
