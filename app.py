@@ -286,49 +286,45 @@ st.dataframe(df_pivot_final, use_container_width=True)
 # ======================================================
 # MOSTRAR EN STREAMLIT graficas
 # ======================================================
-import altair as alt
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+from streamlit_plotly_events import plotly_events
 
-st.subheader("Tiempo promedio por ubicación con detalle de NIA")
+st.title("Visualización de tiempos promedio por ubicación con Plotly")
 
-# Ejemplo de df_final
-# df_final debe tener: logs_nia, logs_ubicacion_renombrada, tiempo_min
-
-# 1️⃣ Calcular promedio por ubicación
+# 1️⃣ Calcular tiempo promedio por ubicación
 prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean().reset_index()
 prom_ubicacion.rename(columns={"tiempo_min": "promedio_minutos"}, inplace=True)
 
-# 2️⃣ Crear selección por clic
-selection = alt.selection_single(fields=['logs_ubicacion_renombrada'], empty="none", on="click")
+# 2️⃣ Crear gráfico de barras interactivo
+fig = px.bar(
+    prom_ubicacion,
+    x="logs_ubicacion_renombrada",
+    y="promedio_minutos",
+    labels={"logs_ubicacion_renombrada": "Ubicación", "promedio_minutos": "Tiempo promedio (minutos)"},
+    hover_data=["logs_ubicacion_renombrada", "promedio_minutos"],
+    color="promedio_minutos",
+    color_continuous_scale="Blues"
+)
 
-# 3️⃣ Gráfico de barras interactivo
-chart_ubicacion = alt.Chart(prom_ubicacion).mark_bar().encode(
-    x=alt.X("logs_ubicacion_renombrada:N", title="Ubicación"),
-    y=alt.Y("promedio_minutos:Q", title="Tiempo promedio (minutos)"),
-    color=alt.condition(selection, alt.value("orange"), alt.value("steelblue")),
-    tooltip=["logs_ubicacion_renombrada", "promedio_minutos"]
-).add_selection(
-    selection
-).properties(
-    width=800,
-    height=400
-).interactive()
+fig.update_layout(
+    width=900,
+    height=500,
+    title="Tiempo promedio por ubicación",
+    xaxis_title="Ubicación",
+    yaxis_title="Tiempo promedio (minutos)",
+)
 
-st.altair_chart(chart_ubicacion)
+# 3️⃣ Mostrar gráfico y capturar clic
+selected_points = plotly_events(fig, click_event=True, hover_event=False)
 
-# 4️⃣ Mostrar los NIA correspondientes a la barra seleccionada
-if selection:  # Streamlit necesita filtrar manualmente
-    # Obtener la ubicación seleccionada
-    loc_sel = st.altair_chart(chart_ubicacion)._chart_dict['selection'] if chart_ubicacion else None
+# 4️⃣ Mostrar NIA correspondientes al clic
+if selected_points:
+    # selected_points devuelve una lista de dicts, tomamos 'x' que es la ubicación
+    ubicacion_seleccionada = selected_points[0]['x']
+    nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"] == ubicacion_seleccionada][["logs_nia", "tiempo_min"]].drop_duplicates()
+    
+    st.subheader(f"NIA utilizados para: {ubicacion_seleccionada}")
+    st.dataframe(nias_filtradas, use_container_width=True)
 
-# Más fácil con Streamlit: usar altair `transform_filter` para mostrar tabla
-# Creamos tabla filtrada con streamlit usando `selection` de Altair
-# Para Streamlit se puede hacer así:
-st.subheader("NIA utilizados para el promedio")
-
-# Crear selección como string en Streamlit
-selected_location = st.selectbox("Selecciona la ubicación para ver los NIA", prom_ubicacion['logs_ubicacion_renombrada'])
-
-nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"] == selected_location][["logs_nia", "tiempo_min"]].drop_duplicates()
-st.dataframe(nias_filtradas, use_container_width=True)
