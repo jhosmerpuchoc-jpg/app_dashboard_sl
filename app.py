@@ -3,7 +3,6 @@ import requests
 from datetime import datetime, timedelta, time
 import pytz
 import streamlit as st
-import plotly.express as px
 
 # ======================================================
 # CONFIGURACIÓN STREAMLIT
@@ -125,21 +124,17 @@ df_all["evento_fecha"] = pd.to_datetime(df_all["evento_ts"], unit="ms", utc=True
 df = df_all.copy()
 
 # ======================================================
-# LIMPIEZA Y RELLENO CON COLUMNAS EXISTENTES
+# LIMPIEZA Y RELLENO
 # ======================================================
-df = df.dropna(subset=[c for c in ["logs_nia","logs_ubicacion"] if c in df.columns])
-
 cols_a_rellenar = ["shared_placaTracto","shared_placaPlataforma","shared_tracker",
                    "shared_dni","shared_conductor","shared_empresa","shared_ruc"]
 
-# Columnas reales disponibles
 cols_reales = [c for c in ["logs_nia"] + cols_a_rellenar if c in df.columns]
 
-# Filtrar solo si "logs_ubicacion" existe
 if "logs_ubicacion" in df.columns:
     df_desasig = df[df["logs_ubicacion"]=="Desasignación"][cols_reales].drop_duplicates(subset="logs_nia")
     for col in cols_a_rellenar:
-        if col in df.columns and f"{col}_desasig" not in df.columns:
+        if col in df.columns:
             df = df.merge(df_desasig[["logs_nia", col]], on="logs_nia", how="left", suffixes=('', '_desasig'))
             df[col] = df[col].fillna(df[f"{col}_desasig"])
             df.drop(columns=[f"{col}_desasig"], inplace=True)
@@ -183,18 +178,11 @@ if "logs_nia" in df.columns:
     df = df[df["tiempo_min"].notna() & (df["tiempo_min"]>=0)]
 
 # ======================================================
-# RENOMBRAR BALANZA INICIAL/FINAL
-# ======================================================
-df["logs_ubicacion_renombrada"] = df.get("logs_ubicacion", pd.Series([""]*len(df)))
-# Aquí se puede agregar la lógica de renombrado si existen los datos de Balanza
-
-# ======================================================
 # PIVOT FINAL
 # ======================================================
 df_final = df.drop(columns=["evento_ts_siguiente"], errors='ignore').sort_values(["logs_nia","evento_ts"])
 df_final = df_final.merge(agg_df, on="logs_nia", how="left")
 
-# Columnas de descarga
 cols_descarga = [
     "Balanza","Balanza final","Balanza inicial","Barrido","Calificacion","Calificación",
     "Consumo","Desasignación","Descarga","Desmanteo","Embutición","Iman Core","Imán",
@@ -208,36 +196,14 @@ df_pivot_final = df_pivot_final.pivot(index="logs_nia", columns="logs_ubicacion_
 df_pivot_final = df_pivot_final.merge(agg_df, on="logs_nia", how="left")
 df_pivot_final["tiempo_descarga"] = df_pivot_final.filter(items=cols_descarga).sum(axis=1)
 
-# ======================================================
-# MOSTRAR TABLA EN STREAMLIT
-# ======================================================
 st.subheader("Tabla de tiempos por NIA")
 st.dataframe(df_pivot_final, use_container_width=True)
 
 # ======================================================
-# GRAFICOS
+# GRÁFICO STREAMLIT NATIVE
 # ======================================================
-st.subheader("Visualización de tiempos promedio por ubicación")
+st.subheader("Tiempo promedio por ubicación")
 if not df_final.empty and "logs_ubicacion_renombrada" in df_final.columns:
-    prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean().reset_index()
-    prom_ubicacion.rename(columns={"tiempo_min":"promedio_minutos"}, inplace=True)
-
-    ubicaciones = prom_ubicacion['logs_ubicacion_renombrada'].tolist()
-    selected_location = st.selectbox("Seleccione ubicación", ubicaciones)
-
-    nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"]==selected_location][["logs_nia","tiempo_min"]].drop_duplicates()
-
-    st.write(f"Tiempo promedio en {selected_location}: {prom_ubicacion.loc[prom_ubicacion['logs_ubicacion_renombrada']==selected_location,'promedio_minutos'].values[0]:.2f} minutos")
-    st.dataframe(nias_filtradas, use_container_width=True)
-
-    prom_ubicacion["highlight"] = prom_ubicacion["logs_ubicacion_renombrada"] == selected_location
-    fig = px.bar(
-        prom_ubicacion,
-        x="logs_ubicacion_renombrada",
-        y="promedio_minutos",
-        color="highlight",
-        color_discrete_map={True:"orange", False:"steelblue"},
-        labels={"logs_ubicacion_renombrada":"Ubicación","promedio_minutos":"Tiempo promedio (minutos)"}
-    )
-    fig.update_layout(title="Tiempo promedio por ubicación", xaxis_title="Ubicación", yaxis_title="Tiempo promedio (minutos)")
-    st.plotly_chart(fig, use_container_width=True)
+    prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean()
+    prom_ubicacion = prom_ubicacion.sort_values(ascending=False)
+    st.bar_chart(prom_ubicacion)
