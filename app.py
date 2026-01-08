@@ -289,42 +289,31 @@ st.dataframe(df_pivot_final, use_container_width=True)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit_plotly_events import plotly_events
 
-st.title("Visualización de tiempos promedio por ubicación con Plotly")
+st.title("Visualización de tiempos promedio por ubicación")
 
 # 1️⃣ Calcular tiempo promedio por ubicación
 prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean().reset_index()
 prom_ubicacion.rename(columns={"tiempo_min": "promedio_minutos"}, inplace=True)
 
-# 2️⃣ Crear gráfico de barras interactivo
+# 2️⃣ Widget para seleccionar la ubicación
+ubicaciones = prom_ubicacion['logs_ubicacion_renombrada'].tolist()
+selected_location = st.selectbox("Seleccione una ubicación para ver el tiempo promedio y los NIA usados", ubicaciones)
+
+# 3️⃣ Filtrar la tabla y mostrar los NIA correspondientes
+nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"] == selected_location][["logs_nia", "tiempo_min"]].drop_duplicates()
+
+st.subheader(f"Tiempo promedio en {selected_location}: {prom_ubicacion.loc[prom_ubicacion['logs_ubicacion_renombrada']==selected_location, 'promedio_minutos'].values[0]:.2f} minutos")
+st.dataframe(nias_filtradas, use_container_width=True)
+
+# 4️⃣ Gráfico de barras con Plotly (resaltando la ubicación seleccionada)
 fig = px.bar(
     prom_ubicacion,
     x="logs_ubicacion_renombrada",
     y="promedio_minutos",
-    labels={"logs_ubicacion_renombrada": "Ubicación", "promedio_minutos": "Tiempo promedio (minutos)"},
-    hover_data=["logs_ubicacion_renombrada", "promedio_minutos"],
-    color="promedio_minutos",
-    color_continuous_scale="Blues"
+    color=prom_ubicacion["logs_ubicacion_renombrada"] == selected_location,
+    color_discrete_map={True: "orange", False: "steelblue"},
+    labels={"logs_ubicacion_renombrada": "Ubicación", "promedio_minutos": "Tiempo promedio (minutos)"}
 )
-
-fig.update_layout(
-    width=900,
-    height=500,
-    title="Tiempo promedio por ubicación",
-    xaxis_title="Ubicación",
-    yaxis_title="Tiempo promedio (minutos)",
-)
-
-# 3️⃣ Mostrar gráfico y capturar clic
-selected_points = plotly_events(fig, click_event=True, hover_event=False)
-
-# 4️⃣ Mostrar NIA correspondientes al clic
-if selected_points:
-    # selected_points devuelve una lista de dicts, tomamos 'x' que es la ubicación
-    ubicacion_seleccionada = selected_points[0]['x']
-    nias_filtradas = df_final[df_final["logs_ubicacion_renombrada"] == ubicacion_seleccionada][["logs_nia", "tiempo_min"]].drop_duplicates()
-    
-    st.subheader(f"NIA utilizados para: {ubicacion_seleccionada}")
-    st.dataframe(nias_filtradas, use_container_width=True)
-
+fig.update_layout(title="Tiempo promedio por ubicación", xaxis_title="Ubicación", yaxis_title="Tiempo promedio (minutos)")
+st.plotly_chart(fig, use_container_width=True)
