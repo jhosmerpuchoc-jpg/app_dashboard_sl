@@ -4,6 +4,15 @@ from datetime import datetime, timedelta, time
 import pytz
 import streamlit as st
 import plotly.express as px
+hide_streamlit_style = """
+            <style>
+            /* Oculta el menú de hamburguesa */
+            #MainMenu {visibility: hidden;}
+            /* Oculta el pie de página de Streamlit */
+            footer {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # ======================================================
 # CAMBIAR COLOR DE FONDO
