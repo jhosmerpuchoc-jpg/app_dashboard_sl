@@ -4,10 +4,18 @@ from datetime import datetime
 import pytz
 import streamlit as st
 
+
+# Configurar la página para que sea a lo ancho
+st.set_page_config(
+    page_title="Telemetría NIA",  # Título de la pestaña
+    layout="wide",                 # Layout a lo ancho
+    initial_sidebar_state="expanded"  # Opcional: barra lateral abierta por defecto
+)
+
+
 # ======================================================
 # FILTRO DE FECHAS
 # ======================================================
-import streamlit as st
 from datetime import datetime, timedelta, time
 import pytz
 
