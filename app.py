@@ -18,7 +18,7 @@ tz_pe = pytz.timezone("America/Lima")
 now_pe = datetime.now(tz_pe)
 
 # --- Desplegable de rango rápido ---
-opciones_rango = ["Custom", "Últimas horas", "Último turno"]
+opciones_rango = ["Custom", "Últimas horas", "Último turno", "Turno actual"]
 seleccion_rango = st.selectbox("Seleccione tipo de filtrado", opciones_rango)
 
 # Inicializamos start_dt y end_dt
@@ -48,6 +48,24 @@ elif seleccion_rango == "Último turno":
         # Último turno fue día 08:00 a 20:00 día anterior
         start_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(8,0)))
         end_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(20,0)))
+
+elif seleccion_rango == "Turno actual":
+    # Turno actual según hora actual
+    hora_actual = now_pe.time()
+    fecha_actual = now_pe.date()
+
+    if time(8,0) <= hora_actual < time(20,0):
+        # Turno día actual
+        start_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
+        end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(20,0)))
+    else:
+        # Turno noche actual
+        if hora_actual >= time(20,0):
+            start_dt = tz_pe.localize(datetime.combine(fecha_actual, time(20,0)))
+            end_dt = tz_pe.localize(datetime.combine(fecha_actual + timedelta(days=1), time(8,0)))
+        else:  # hora_actual < 08:00
+            start_dt = tz_pe.localize(datetime.combine(fecha_actual - timedelta(days=1), time(20,0)))
+            end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
 
 else:
     # Custom: selector manual de fecha y hora
