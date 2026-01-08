@@ -281,5 +281,29 @@ df_pivot_final.to_csv("tiempos_tsb_pivot_limpio.csv", index=False)
 # ======================================================
 # MOSTRAR EN STREAMLIT
 # ======================================================
+
 st.title("Telemetría de Recorridos por NIA")
-st.dataframe(df_pivot_final)
+# Mostrar DataFrame con ancho completo
+st.dataframe(df_pivot_final, use_container_width=True)
+# ======================================================
+# MOSTRAR EN STREAMLIT graficas
+# ======================================================
+import altair as alt
+
+st.subheader("Tiempo promedio por ubicación")
+
+# Calcular promedio de tiempo por ubicación
+prom_ubicacion = df_final.groupby("logs_ubicacion_renombrada")["tiempo_min"].mean().reset_index()
+prom_ubicacion.rename(columns={"tiempo_min": "promedio_minutos"}, inplace=True)
+
+# Gráfico de barras
+chart_ubicacion = alt.Chart(prom_ubicacion).mark_bar().encode(
+    x=alt.X("logs_ubicacion_renombrada:N", title="Ubicación"),
+    y=alt.Y("promedio_minutos:Q", title="Tiempo promedio (minutos)"),
+    tooltip=["logs_ubicacion_renombrada", "promedio_minutos"]
+).properties(
+    width=800,
+    height=400
+).interactive()
+
+st.altair_chart(chart_ubicacion)
