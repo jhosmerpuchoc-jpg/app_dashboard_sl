@@ -4,15 +4,22 @@ from datetime import datetime, timedelta, time
 import pytz
 import streamlit as st
 import plotly.express as px
-hide_streamlit_style = """
-            <style>
-            /* Oculta el menú de hamburguesa */
-            #MainMenu {visibility: hidden;}
-            /* Oculta el pie de página de Streamlit */
-            footer {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+
+# CSS para ocultar header, toolbar y footer
+hide_header_style = """
+    <style>
+    /* Oculta todo el header de Streamlit */
+    header.stAppHeader {display: none;}
+    
+    /* Opcional: oculta el footer de Streamlit */
+    footer {visibility: hidden;}
+    
+    /* Opcional: elimina margen superior para que la app suba completamente */
+    .stApp {padding-top: 0rem;}
+    </style>
+"""
+st.markdown(hide_header_style, unsafe_allow_html=True)
 
 # ======================================================
 # CAMBIAR COLOR DE FONDO
