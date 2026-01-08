@@ -268,6 +268,8 @@ cols_descarga = [
 cols_existentes = [c for c in cols_descarga if c in df_pivot_final.columns]
 df_pivot_final["tiempo_descarga"] = df_pivot_final[cols_existentes].sum(axis=1)
 
+df_pivot_final.to_csv("tiempos_tsb_pivot_limpio.csv", index=False)
+
 # ======================================================
 # MOSTRAR EN STREAMLIT
 # ======================================================
