@@ -90,7 +90,7 @@ elif seleccion_rango in ["Último turno", "Turno actual"]:
                 end_dt = tz_pe.localize(datetime.combine(fecha_actual, time(8,0)))
 
 else:
-    start_dt = st.datetime_input("Fecha y hora de inicio", value=now_pe - timedelta(hours=1))
+    start_dt = st.datetime_input("Fecha y hora de inicio", value=now_pe - timedelta(hours=12))
     end_dt = st.datetime_input("Fecha y hora de fin", value=now_pe)
 
 start_ts = int(start_dt.astimezone(pytz.UTC).timestamp() * 1000)
