@@ -276,7 +276,8 @@ cols_descarga = [
     "Ruta hacia Imán","Ruta hacia Oxicorte"
 ]
 cols_existentes = [c for c in cols_descarga if c in df_pivot_final.columns]
-df_pivot_final["tiempo_descarga"] = df_pivot_final[cols_existentes].sum(axis=1)
+df_pivot_final["tiempo_descarga"] = df_pivot_final[cols_existentes].sum(axis=1)/60
+df_pivot_final["tiempo_descarga"] = df_pivot_final["tiempo_descarga"].round(2)
 
 # ======================================================
 # MOSTRAR EN STREAMLIT
