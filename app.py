@@ -107,7 +107,7 @@ USERNAME = "demo.aceria@smelpro.com"
 PASSWORD = "demo2025"
 ASSET_ID = "00ad3a40-838f-11f0-97ae-99ce2c54259f"
 KEYS = [
-    "logs_nia","logs_ubicacion",
+    "logs_nia","logs_ubicacion", "shared_tipo",
     "shared_placaTracto","shared_placaPlataforma",
     "shared_tracker","shared_dni","shared_conductor",
     "shared_empresa","shared_ruc"
@@ -167,6 +167,7 @@ df["evento_ts"] = pd.to_numeric(df["evento_ts"], errors="coerce")
 df = df.dropna(subset=["logs_nia", "evento_ts"])
 
 cols_a_rellenar = [
+    "shared_tipo",
     "shared_placaTracto",
     "shared_placaPlataforma",
     "shared_tracker",
