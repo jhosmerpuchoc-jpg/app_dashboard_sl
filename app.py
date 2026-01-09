@@ -144,70 +144,89 @@ if not data or all(not v for v in data.values()):
 # ======================================================
 dfs = []
 for key, values in data.items():
-    if values:
-        df_key = pd.DataFrame(values).rename(columns={"value": key})
-        dfs.append(df_key[["ts", key]])
-df_all = pd.concat(dfs, ignore_index=True).groupby("ts", as_index=False).first().rename(columns={"ts":"evento_ts"})
-df_all["evento_fecha"] = pd.to_datetime(df_all["evento_ts"], unit="ms", utc=True).dt.tz_convert(tz_pe).dt.tz_localize(None)
+    if not values:
+        continue
+    df_key = pd.DataFrame(values)
+    df_key.rename(columns={"value": key}, inplace=True)
+    dfs.append(df_key[["ts", key]])
+df_all = pd.concat(dfs).groupby("ts", as_index=False).first()
+df_all.rename(columns={"ts": "evento_ts"}, inplace=True)
+
+# Convertir UTC a hora local Perú
+df_all["evento_fecha"] = (
+    pd.to_datetime(df_all["evento_ts"], unit="ms", utc=True)
+          .dt.tz_convert("America/Lima")
+          .dt.tz_localize(None)
+)
+
+# ======================================================
+# LIMPIEZA Y RELLENO
+# ======================================================
 df = df_all.copy()
+df["evento_ts"] = pd.to_numeric(df["evento_ts"], errors="coerce")
+df = df.dropna(subset=["logs_nia", "evento_ts"])
 
-# ======================================================
-# LIMPIEZA Y RELLENO CON COLUMNAS EXISTENTES
-# ======================================================
-df = df.dropna(subset=[c for c in ["logs_nia","logs_ubicacion"] if c in df.columns])
-
-cols_a_rellenar = ["shared_placaTracto","shared_placaPlataforma","shared_tracker",
-                   "shared_dni","shared_conductor","shared_empresa","shared_ruc"]
-
-# Columnas reales disponibles
-cols_reales = [c for c in ["logs_nia"] + cols_a_rellenar if c in df.columns]
-
-# Filtrar solo si "logs_ubicacion" existe
-if "logs_ubicacion" in df.columns:
-    df_desasig = df[df["logs_ubicacion"]=="Desasignación"][cols_reales].drop_duplicates(subset="logs_nia")
-    for col in cols_a_rellenar:
-        if col in df.columns and f"{col}_desasig" not in df.columns:
-            df = df.merge(df_desasig[["logs_nia", col]], on="logs_nia", how="left", suffixes=('', '_desasig'))
-            df[col] = df[col].fillna(df[f"{col}_desasig"])
-            df.drop(columns=[f"{col}_desasig"], inplace=True)
+cols_a_rellenar = [
+    "shared_placaTracto",
+    "shared_placaPlataforma",
+    "shared_tracker",
+    "shared_dni",
+    "shared_conductor",
+    "shared_empresa",
+    "shared_ruc"
+]
+df_desasig = df[df["logs_ubicacion"] == "Desasignación"][["logs_nia"] + cols_a_rellenar].drop_duplicates(subset="logs_nia")
+df = df.merge(df_desasig, on="logs_nia", how="left", suffixes=('', '_desasig'))
+for col in cols_a_rellenar:
+    df[col] = df[col].fillna(df[f"{col}_desasig"])
+df.drop(columns=[f"{col}_desasig" for col in cols_a_rellenar], inplace=True)
 
 # ======================================================
 # FILTRAR NIA CON RECORRIDO COMPLETO
 # ======================================================
-def recorrido_completo(gr):
-    if "logs_ubicacion" not in gr.columns:
-        return False
-    ts_ing = gr.loc[gr["logs_ubicacion"]=="En Asignación", "evento_ts"]
-    ts_sal = gr.loc[gr["logs_ubicacion"]=="Desasignación", "evento_ts"]
-    return not ts_ing.empty and not ts_sal.empty and ts_ing.min() < ts_sal.max()
+def recorrido_completo(t: pd.DataFrame) -> bool:
+    ts_ingreso = t.loc[t["logs_ubicacion"] == "En Asignación", "evento_ts"]
+    ts_salida  = t.loc[t["logs_ubicacion"] == "Desasignación", "evento_ts"]
+    return (
+        not ts_ingreso.empty
+        and not ts_salida.empty
+        and ts_ingreso.min() < ts_salida.max()
+    )
 
-if "logs_nia" in df.columns:
-    nias_validos = df.groupby("logs_nia").filter(recorrido_completo)["logs_nia"].unique()
-    df = df[df["logs_nia"].isin(nias_validos)]
-
-# ======================================================
-# TIEMPOS DE PERMANENCIA
-# ======================================================
-if "logs_nia" in df.columns:
-    agg_df = df.groupby("logs_nia").agg(
-        ts_ingreso=("evento_ts", lambda x: x[df.loc[x.index,"logs_ubicacion"]=="En Asignación"].min() if "logs_ubicacion" in df.columns else pd.NA),
-        ts_salida=("evento_ts", lambda x: x[df.loc[x.index,"logs_ubicacion"]=="Desasignación"].max() if "logs_ubicacion" in df.columns else pd.NA)
-    ).reset_index()
-
-    agg_df["tiempo_permanencia"] = (agg_df["ts_salida"] - agg_df["ts_ingreso"])/1000/3600
-    agg_df["ingreso"] = pd.to_datetime(agg_df["ts_ingreso"], unit='ms', errors='coerce').dt.tz_localize('UTC').dt.tz_convert(tz_pe)
-    agg_df["salida"] = pd.to_datetime(agg_df["ts_salida"], unit='ms', errors='coerce').dt.tz_localize('UTC').dt.tz_convert(tz_pe)
-else:
-    agg_df = pd.DataFrame(columns=["logs_nia","ts_ingreso","ts_salida","tiempo_permanencia","ingreso","salida"])
+nias_validos = df.groupby("logs_nia", sort=False).filter(recorrido_completo)["logs_nia"].unique()
+df = df[df["logs_nia"].isin(nias_validos)]
 
 # ======================================================
-# TIEMPO ENTRE EVENTOS
+# CALCULAR TIEMPOS DE PERMANENCIA
 # ======================================================
-if "logs_nia" in df.columns:
-    df = df.sort_values(["logs_nia","evento_ts"])
-    df["evento_ts_siguiente"] = df.groupby("logs_nia")["evento_ts"].shift(-1)
-    df["tiempo_min"] = (df["evento_ts_siguiente"] - df["evento_ts"])/1000/60
-    df = df[df["tiempo_min"].notna() & (df["tiempo_min"]>=0)]
+tz_pe = pytz.timezone("America/Lima")
+def tiempos_asig_desasig(t: pd.DataFrame):
+    ts_ingreso = t.loc[t["logs_ubicacion"] == "En Asignación", "evento_ts"]
+    ts_salida  = t.loc[t["logs_ubicacion"] == "Desasignación", "evento_ts"]
+    if not ts_ingreso.empty and not ts_salida.empty:
+        ts_entrada = ts_ingreso.min()
+        ts_salida_max = ts_salida.max()
+        return pd.Series({
+            "tiempo_permanencia": (ts_salida_max - ts_entrada)/1000/3600,
+            "ingreso": pd.to_datetime(ts_entrada, unit='ms').tz_localize('UTC').tz_convert(tz_pe),
+            "salida": pd.to_datetime(ts_salida_max, unit='ms').tz_localize('UTC').tz_convert(tz_pe)
+        })
+    else:
+        return pd.Series({
+            "tiempo_permanencia": None,
+            "ingreso": None,
+            "salida": None
+        })
+df_tiempos = df.groupby("logs_nia", group_keys=False).apply(tiempos_asig_desasig).reset_index()
+
+# ======================================================
+# ORDEN Y CALCULO DE TIEMPOS ENTRE EVENTOS
+# ======================================================
+df = df.sort_values(["logs_nia", "evento_ts"]).assign(
+    evento_ts_siguiente=lambda x: x.groupby("logs_nia")["evento_ts"].shift(-1),
+    tiempo_min=lambda x: (x["evento_ts_siguiente"] - x["evento_ts"])/1000/60
+)
+df = df[df["tiempo_min"].notna() & (df["tiempo_min"] >= 0)]
 
 # ======================================================
 # RENOMBRAR BALANZA INICIAL/FINAL
@@ -233,30 +252,37 @@ for nia, grupo in df.groupby("logs_nia"):
             ruta_fin_idx = ruta_fin.index[-1]
             if grupo.loc[ruta_fin_idx, "logs_ubicacion"] == "Ruta hacia Balanza":
                 df.loc[ruta_fin_idx, "logs_ubicacion_renombrada"] = "Ruta hacia Balanza final"
-# ======================================================
-# PIVOT FINAL
-# ======================================================
-df_final = df.drop(columns=["evento_ts_siguiente"], errors='ignore').sort_values(["logs_nia","evento_ts"])
-df_final = df_final.merge(agg_df, on="logs_nia", how="left")
 
-# Columnas de descarga
+# ======================================================
+# RESULTADO FINAL Y PIVOT
+# ======================================================
+df_final = df.drop(columns=["evento_ts_siguiente"]).sort_values(["logs_nia", "evento_ts"])
+df_final = df_final.merge(df_tiempos, on="logs_nia", how="left")
+
+df_pivot = df_final.groupby(["logs_nia", "logs_ubicacion_renombrada"])["tiempo_min"].sum().reset_index()
+df_pivot_final = df_pivot.pivot(index="logs_nia", columns="logs_ubicacion_renombrada", values="tiempo_min").reset_index()
+df_pivot_final = df_pivot_final.merge(df_tiempos, on="logs_nia", how="left")
+
 cols_descarga = [
-    "Balanza","Balanza final","Balanza inicial","Barrido","Calificacion","Calificación",
-    "Consumo","Desasignación","Descarga","Desmanteo","Embutición","Iman Core","Imán",
-    "Oxicorte","Ruta hacia Balanza","Ruta hacia Balanza final","Ruta hacia Balanza inicial",
-    "Ruta hacia Barrido","Ruta hacia Calificacion","Ruta hacia Calificación",
-    "Ruta hacia Consumo","Ruta hacia Descarga","Ruta hacia Desmanteo",
-    "Ruta hacia Embutición","Ruta hacia Imán","Ruta hacia Oxicorte"
+    "Balanza","Balanza final","Balanza inicial","Barrido",
+    "Calificacion","Calificación","Consumo","Desasignación",
+    "Descarga","Desmanteo","Embutición","Iman Core","Imán",
+    "Oxicorte","Ruta hacia Balanza","Ruta hacia Balanza final",
+    "Ruta hacia Balanza inicial","Ruta hacia Barrido",
+    "Ruta hacia Calificacion","Ruta hacia Calificación",
+    "Ruta hacia Consumo","Ruta hacia Descarga",
+    "Ruta hacia Desmanteo","Ruta hacia Embutición",
+    "Ruta hacia Imán","Ruta hacia Oxicorte"
 ]
-df_pivot_final = df_final.groupby(["logs_nia","logs_ubicacion_renombrada"])["tiempo_min"].sum().reset_index()
-df_pivot_final = df_pivot_final.pivot(index="logs_nia", columns="logs_ubicacion_renombrada", values="tiempo_min").reset_index()
-df_pivot_final = df_pivot_final.merge(agg_df, on="logs_nia", how="left")
-df_pivot_final["tiempo_descarga"] = df_pivot_final.filter(items=cols_descarga).sum(axis=1)
+cols_existentes = [c for c in cols_descarga if c in df_pivot_final.columns]
+df_pivot_final["tiempo_descarga"] = df_pivot_final[cols_existentes].sum(axis=1)
 
 # ======================================================
-# MOSTRAR TABLA EN STREAMLIT
+# MOSTRAR EN STREAMLIT
 # ======================================================
-st.subheader("Tabla de tiempos por NIA")
+
+st.title("Telemetría de Recorridos por NIA")
+# Mostrar DataFrame con ancho completo
 st.dataframe(df_pivot_final, use_container_width=True)
 
 # ======================================================
