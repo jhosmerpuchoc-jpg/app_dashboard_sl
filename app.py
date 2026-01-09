@@ -212,9 +212,27 @@ if "logs_nia" in df.columns:
 # ======================================================
 # RENOMBRAR BALANZA INICIAL/FINAL
 # ======================================================
-df["logs_ubicacion_renombrada"] = df.get("logs_ubicacion", pd.Series([""]*len(df)))
-# Aquí se puede agregar la lógica de renombrado si existen los datos de Balanza
+df["logs_ubicacion_renombrada"] = df["logs_ubicacion"]
+for nia, grupo in df.groupby("logs_nia"):
+    grupo = grupo.sort_values("evento_ts")
+    balanza = grupo[grupo["logs_ubicacion"] == "Balanza"]
+    if not balanza.empty:
+        balanza_ini_idx = balanza.index[0]
+        balanza_fin_idx = balanza.index[-1]
+        df.loc[balanza_ini_idx, "logs_ubicacion_renombrada"] = "Balanza inicial"
+        df.loc[balanza_fin_idx, "logs_ubicacion_renombrada"] = "Balanza final"
 
+        ruta_ini = grupo[grupo["evento_ts"] < grupo.loc[balanza_ini_idx, "evento_ts"]]
+        if not ruta_ini.empty:
+            ruta_ini_idx = ruta_ini.index[-1]
+            if grupo.loc[ruta_ini_idx, "logs_ubicacion"] == "Ruta hacia Balanza":
+                df.loc[ruta_ini_idx, "logs_ubicacion_renombrada"] = "Ruta hacia Balanza inicial"
+
+        ruta_fin = grupo[grupo["evento_ts"] < grupo.loc[balanza_fin_idx, "evento_ts"]]
+        if not ruta_fin.empty:
+            ruta_fin_idx = ruta_fin.index[-1]
+            if grupo.loc[ruta_fin_idx, "logs_ubicacion"] == "Ruta hacia Balanza":
+                df.loc[ruta_fin_idx, "logs_ubicacion_renombrada"] = "Ruta hacia Balanza final"
 # ======================================================
 # PIVOT FINAL
 # ======================================================
